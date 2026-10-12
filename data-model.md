@@ -313,7 +313,6 @@ export interface Ingredient {
 export interface Step {
   id: Id;
   text: string;
-  photoIds: Id[];
   timerSeconds: number | null;
 }
 
@@ -449,7 +448,7 @@ interface TagRepository {
 
 ## 6. Open Questions for Review
 
-1. **Aggregate save strategy**: replace all child rows on every save (simple), or diff and update (preserves IDs for step photos)? Recommendation: diff by `id`, since photos reference steps.
+1. ~~Aggregate save strategy~~ **Resolved:** all ids are generated client-side (including new recipes/steps), so `save` upserts steps and photos by id and replaces ingredients wholesale.
 2. **Adding to an existing list**: when a recipe's ingredients are added to a list with checked items, should a checked "2 onions" absorb new onions (unchecking it), or should a new line be created? Recommendation: create a new unchecked line for the extra quantity.
 3. **Ingredient name matching**: simple normalization (plural, case) is the plan. Do we want a synonyms list (scallion = green onion) now or later? Recommendation: later.
 4. **Aisle categories**: assign automatically from a built-in dictionary (P1), or leave manual? Recommendation: small built-in dictionary, user-overridable.

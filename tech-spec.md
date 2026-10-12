@@ -13,7 +13,7 @@ Companion to [feature.md](feature.md). The data layer is detailed in [data-model
 | ORM / migrations | Drizzle ORM + `drizzle-kit` |
 | Full-text search | SQLite FTS5 (raw SQL migration) |
 | Images | `expo-image-picker`, `expo-image-manipulator`, `expo-file-system`, `expo-image` for display |
-| Preferences | `react-native-mmkv` |
+| Preferences | Deferred (not needed for P0); MMKV or `expo-sqlite/kv-store` when settings land |
 | UI state | Zustand (ephemeral UI state only) |
 | Data access in UI | Drizzle live queries (`useLiveQuery`) or TanStack Query over repositories |
 | Forms | `react-hook-form` + `zod` |
@@ -45,7 +45,7 @@ Domain (pure TypeScript: models, scaling, unit conversion, merging, parsing)
 
 ```
 recipes/
-├── app/                      # Expo Router routes
+├── src/app/                  # Expo Router routes (template default is src/app)
 │   ├── (tabs)/
 │   │   ├── index.tsx         # Recipe library
 │   │   ├── shopping.tsx      # Shopping lists
@@ -56,7 +56,6 @@ recipes/
 │   │   ├── [id]/cook.tsx     # Cooking mode (P1)
 │   │   └── new.tsx
 │   └── shopping/[id].tsx
-├── src/
 │   ├── domain/               # Pure TS: models, quantity, units, scaling, merge, parse
 │   ├── data/
 │   │   ├── db/               # client, schema/, migrations/, fts
