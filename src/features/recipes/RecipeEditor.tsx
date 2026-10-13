@@ -263,7 +263,7 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
               </View>
             );
           })}
-          <Button title="Add ingredient" variant="secondary" small onPress={() => set('ingredients', [...form.ingredients, { id: newId(), qty: '', unit: null, name: '', note: '', groupName: null }])} />
+          <Button title="Add ingredient" variant="secondary" small onPress={() => set('ingredients', [...form.ingredients, { id: newId(), qty: '', unit: 'g', name: '', note: '', groupName: null }])} />
         </Section>
 
         <Section title="Steps">
