@@ -71,6 +71,7 @@ export interface RecipeSummary {
   id: Id;
   title: string;
   coverThumbUri: string | null;
+  servings: number;
   totalMinutes: number | null;
   isFavorite: boolean;
   tags: string[];

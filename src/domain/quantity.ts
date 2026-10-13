@@ -1,4 +1,4 @@
-import { getUnitByKey } from './units';
+import { getUnitByKey, unitLabel } from './units';
 import type { Quantity } from './types';
 
 const UNICODE_FRACTIONS: Record<string, string> = {
@@ -72,6 +72,6 @@ export function formatQuantity(q: Quantity): string {
   if (q.value === null) return '';
   const amount =
     q.max !== undefined ? `${formatNumber(q.value)}–${formatNumber(q.max)}` : formatNumber(q.value);
-  const unit = getUnitByKey(q.unit)?.key;
+  const unit = getUnitByKey(q.unit) ? unitLabel(q.unit) : '';
   return unit ? `${amount} ${unit}` : amount;
 }

@@ -171,6 +171,7 @@ export function createRecipeRepository(db: AppDb, photoStore: PhotoStore) {
       id: r.id,
       title: r.title,
       coverThumbUri: covers.has(r.id) ? photoStore.resolve(covers.get(r.id)!) : null,
+      servings: r.servings,
       totalMinutes: totalMinutes(r.prepMinutes, r.cookMinutes),
       isFavorite: r.isFavorite,
       tags: tagMap.get(r.id) ?? [],
