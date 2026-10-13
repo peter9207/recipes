@@ -28,6 +28,11 @@ const BY_KEY = new Map(UNITS.map((u) => [u.key, u]));
 const BY_LABEL = new Map<string, UnitDef>();
 for (const u of UNITS) for (const l of u.labels) BY_LABEL.set(l, u);
 
+/** Human-readable unit text: 'floz' → 'fl oz', otherwise the key itself. */
+export function unitLabel(key: string | null): string {
+  return key === 'floz' ? 'fl oz' : (key ?? '');
+}
+
 export function getUnitByKey(key: string | null): UnitDef | null {
   return key ? (BY_KEY.get(key) ?? null) : null;
 }

@@ -5,13 +5,14 @@ import { router, Stack, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AppText, Button, IconButton, TextField } from '@/components/ui';
+import { UnitPicker } from '@/components/UnitPicker';
 import { Radius, Spacing } from '@/constants/theme';
 import { DraftValidationError, getRepositories } from '@/data';
-import { formatQuantity, parseIngredientLine, type PhotoDraft, type Recipe, type RecipeDraft } from '@/domain';
+import { formatNumber, parseLeadingQuantity, type PhotoDraft, type Quantity, type Recipe, type RecipeDraft } from '@/domain';
 import { useTheme } from '@/hooks/use-theme';
 import { newId } from '@/lib/id';
 
-interface IngredientRow { id: string; text: string; groupName: string | null }
+interface IngredientRow { id: string; qty: string; unit: string | null; name: string; note: string; groupName: string | null }
 interface StepRow { id: string; text: string; timerSeconds: number | null }
 interface PhotoItem { id: string; uri: string; stepId: string | null; sourceUri?: string }
 
@@ -26,10 +27,19 @@ const EMPTY: FormState = {
   ingredients: [], steps: [], photos: [],
 };
 
-function lineFor(i: Recipe['ingredients'][number]): string {
-  if (i.rawText) return i.rawText;
-  const amount = formatQuantity(i.quantity);
-  return [amount, i.name].filter(Boolean).join(' ') + (i.note ? `, ${i.note}` : '');
+/** "1 ½" / "2–3" for the amount field; empty when unspecified. */
+function qtyText(q: Quantity): string {
+  if (q.value === null) return '';
+  return q.max !== undefined ? `${formatNumber(q.value)}–${formatNumber(q.max)}` : formatNumber(q.value);
+}
+
+/** Parse the amount field. `null` means the text isn't a valid amount. */
+function parseQty(text: string): { value: number | null; max?: number } | null {
+  const trimmed = text.trim();
+  if (!trimmed) return { value: null };
+  const lead = parseLeadingQuantity(trimmed);
+  if (!lead || lead.rest.trim()) return null;
+  return { value: lead.value, ...(lead.max !== undefined ? { max: lead.max } : {}) };
 }
 
 function toForm(r: Recipe): FormState {
@@ -37,7 +47,9 @@ function toForm(r: Recipe): FormState {
     title: r.title, description: r.description ?? '', servings: String(r.servings),
     prep: r.prepMinutes?.toString() ?? '', cook: r.cookMinutes?.toString() ?? '',
     source: r.source ?? '', notes: r.notes ?? '', tags: r.tags.join(', '), isFavorite: r.isFavorite,
-    ingredients: r.ingredients.map((i) => ({ id: i.id, text: lineFor(i), groupName: i.groupName })),
+    ingredients: r.ingredients.map((i) => ({
+      id: i.id, qty: qtyText(i.quantity), unit: i.quantity.unit, name: i.name, note: i.note ?? '', groupName: i.groupName,
+    })),
     steps: r.steps.map((s) => ({ id: s.id, text: s.text, timerSeconds: s.timerSeconds })),
     photos: r.photos.map((p) => ({ id: p.id, uri: p.thumbUri, stepId: p.stepId })),
   };
@@ -61,9 +73,12 @@ function toDraft(id: string, f: FormState): RecipeDraft {
     notes: f.notes.trim() || null,
     isFavorite: f.isFavorite,
     tags: f.tags.split(',').map((x) => x.trim()).filter(Boolean),
-    ingredients: f.ingredients.filter((r) => r.text.trim()).map((r) => {
-      const p = parseIngredientLine(r.text);
-      return { id: r.id, groupName: r.groupName, quantity: p.quantity, name: p.name, note: p.note, rawText: r.text.trim() };
+    ingredients: f.ingredients.filter((r) => r.name.trim() || r.qty.trim()).map((r) => {
+      const q = parseQty(r.qty) ?? { value: null };
+      return {
+        id: r.id, groupName: r.groupName, name: r.name.trim(), note: r.note.trim() || null, rawText: null,
+        quantity: { ...q, unit: q.value === null ? null : r.unit },
+      };
     }),
     steps: f.steps.filter((s) => s.text.trim()).map((s) => ({ id: s.id, text: s.text.trim(), timerSeconds: s.timerSeconds })),
     photos: f.photos.map((p): PhotoDraft => ({ id: p.id, stepId: p.stepId, ...(p.sourceUri ? { sourceUri: p.sourceUri } : {}) })),
@@ -116,6 +131,11 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   async function save() {
+    const badAmount = form.ingredients.find((r) => r.name.trim() && parseQty(r.qty) === null);
+    if (badAmount) {
+      Alert.alert('Check the amount', `“${badAmount.qty}” for ${badAmount.name.trim()} isn’t a number. Try 2, 1.5, 1/2 or 2-3.`);
+      return;
+    }
     setSaving(true);
     try {
       await recipes.save(toDraft(id, form));
@@ -208,26 +228,42 @@ export function RecipeEditor({ recipeId }: { recipeId?: string }) {
 
         <TextField label="Description" value={form.description} onChangeText={(v) => set('description', v)} multiline style={{ minHeight: 70, textAlignVertical: 'top' }} />
 
-        <Section title="Ingredients" hint="One per line, e.g. “2 cups flour, sifted”">
-          {form.ingredients.map((row, i) => (
-            <View key={row.id} style={styles.listRow}>
-              <View style={{ flex: 1 }}>
-                <TextField
-                  value={row.text}
-                  onChangeText={(v) => set('ingredients', form.ingredients.map((r) => (r.id === row.id ? { ...r, text: v } : r)))}
-                  placeholder="2 cups flour"
-                  autoCapitalize="none"
-                />
+        <Section title="Ingredients">
+          {form.ingredients.map((row, i) => {
+            const update = (patch: Partial<IngredientRow>) =>
+              set('ingredients', form.ingredients.map((r) => (r.id === row.id ? { ...r, ...patch } : r)));
+            return (
+              <View key={row.id} style={[styles.ingredient, { backgroundColor: t.backgroundElement }]}>
+                <View style={styles.ingredientMain}>
+                  <View style={{ width: 64 }}>
+                    <TextField
+                      value={row.qty} onChangeText={(v) => update({ qty: v })} placeholder="Qty"
+                      keyboardType="numbers-and-punctuation" accessibilityLabel="Amount" textAlign="center"
+                    />
+                  </View>
+                  <View style={{ width: 96 }}>
+                    <UnitPicker value={row.unit} onChange={(unit) => update({ unit })} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextField value={row.name} onChangeText={(v) => update({ name: v })} placeholder="Ingredient" autoCapitalize="none" accessibilityLabel="Ingredient name" />
+                  </View>
+                </View>
+                <View style={styles.ingredientFoot}>
+                  <View style={{ flex: 1 }}>
+                    <TextField value={row.note} onChangeText={(v) => update({ note: v })} placeholder="Note (e.g. sifted)" autoCapitalize="none" style={{ minHeight: 36, paddingVertical: 6 }} />
+                  </View>
+                  <Reorder
+                    flush
+                    canUp={i > 0} canDown={i < form.ingredients.length - 1}
+                    onUp={() => set('ingredients', move(form.ingredients, i, i - 1))}
+                    onDown={() => set('ingredients', move(form.ingredients, i, i + 1))}
+                    onRemove={() => set('ingredients', form.ingredients.filter((r) => r.id !== row.id))}
+                  />
+                </View>
               </View>
-              <Reorder
-                canUp={i > 0} canDown={i < form.ingredients.length - 1}
-                onUp={() => set('ingredients', move(form.ingredients, i, i - 1))}
-                onDown={() => set('ingredients', move(form.ingredients, i, i + 1))}
-                onRemove={() => set('ingredients', form.ingredients.filter((r) => r.id !== row.id))}
-              />
-            </View>
-          ))}
-          <Button title="Add ingredient" variant="secondary" small onPress={() => set('ingredients', [...form.ingredients, { id: newId(), text: '', groupName: null }])} />
+            );
+          })}
+          <Button title="Add ingredient" variant="secondary" small onPress={() => set('ingredients', [...form.ingredients, { id: newId(), qty: '', unit: null, name: '', note: '', groupName: null }])} />
         </Section>
 
         <Section title="Steps">
@@ -274,12 +310,12 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-function Reorder({ canUp, canDown, onUp, onDown, onRemove }: {
-  canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void; onRemove: () => void;
+function Reorder({ canUp, canDown, onUp, onDown, onRemove, flush }: {
+  flush?: boolean; canUp: boolean; canDown: boolean; onUp: () => void; onDown: () => void; onRemove: () => void;
 }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 8 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: flush ? 0 : 8 }}>
       <View style={{ opacity: canUp ? 1 : 0.25 }}><IconButton name="chevron-up" size={20} label="Move up" onPress={() => canUp && onUp()} /></View>
       <View style={{ opacity: canDown ? 1 : 0.25 }}><IconButton name="chevron-down" size={20} label="Move down" onPress={() => canDown && onDown()} /></View>
       <IconButton name="trash-outline" size={20} color={t.danger} label="Remove" onPress={onRemove} />
@@ -290,6 +326,9 @@ function Reorder({ canUp, canDown, onUp, onDown, onRemove }: {
 const styles = StyleSheet.create({
   content: { padding: Spacing.three, gap: Spacing.four, paddingBottom: 80 },
   row: { flexDirection: 'row', gap: Spacing.two },
+  ingredient: { borderRadius: Radius.md, padding: Spacing.two, gap: Spacing.two },
+  ingredientMain: { flexDirection: 'row', gap: Spacing.two },
+  ingredientFoot: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   listRow: { flexDirection: 'row', gap: Spacing.one, alignItems: 'flex-start' },
   photo: { width: 120, height: 120, borderRadius: Radius.md },
   addPhoto: { alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', gap: 4 },
